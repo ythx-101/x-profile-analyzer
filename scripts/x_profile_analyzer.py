@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 """
 X Profile Analyzer - 用户画像分析工具
-通过 Nitter (via Camofox) 抓取推文，用 MiniMax M2.5 API 生成结构化用户画像
+通过 Nitter (via Camofox) 抓取推文，生成结构化用户画像
 
 Usage:
-    python3 x-profile-analyzer.py --user QingQ77
-    python3 x-profile-analyzer.py --user QingQ77 --count 30 --output profile.md
+    # 完整模式（抓推文 + AI 分析）
+    python3 x_profile_analyzer.py --user elonmusk
+
+    # 纯数据模式（只抓推文，不调 AI）让龙虾自己分析
+    python3 x_profile_analyzer.py --user elonmusk --no-analyze
+
+    # 数据模式 + 保存原始 JSON
+    python3 x_profile_analyzer.py --user elonmusk --no-analyze --output-json data.json
+
+AI 配置（完整模式需要，三选一）：
+    export MINIMAX_API_KEY=xxx     # MiniMax（OpenClaw 用户自动读取，无需配置）
+    export OPENAI_API_KEY=xxx      # OpenAI / DeepSeek 等
+    export OPENAI_BASE_URL=xxx     # 自定义接口（可选）
+    export OPENAI_MODEL=xxx        # 模型名（可选，默认 gpt-4o-mini）
 """
 
 import json
@@ -505,11 +517,13 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="X 用户画像分析工具 - 抓取推文并生成结构化分析报告"
+        description="X 用户画像分析工具 - 抓取推文，可选 AI 分析"
     )
     parser.add_argument("--user", "-u", required=True, help="X/Twitter 用户名（不含 @）")
-    parser.add_argument("--count", "-c", type=int, default=300, help="分析推文数量（默认 300，尽可能抓最多，Nitter 实际上限约 300）")
+    parser.add_argument("--count", "-c", type=int, default=300, help="抓取推文数量（默认 300，Nitter 实际上限约 300）")
     parser.add_argument("--output", "-o", help="输出文件路径（默认输出到 stdout）")
+    parser.add_argument("--output-json", help="同时保存原始推文 JSON 到指定路径")
+    parser.add_argument("--no-analyze", action="store_true", help="只抓推文数据，不调 AI 分析（让调用方自己分析）")
     parser.add_argument("--verbose", "-v", action="store_true", help="显示详细进度信息")
     parser.add_argument("--no-camofox", action="store_true", help="跳过 Camofox 检查（调试用）")
     args = parser.parse_args()
@@ -532,15 +546,6 @@ def main():
             print("Make sure Camofox is running.", file=sys.stderr)
             sys.exit(1)
 
-    # 加载 API Key
-    try:
-        api_key, api_url, model_name, backend = load_api_config()
-        if args.verbose:
-            print(f"[Auth] {backend} API loaded: {api_key[:15]}... model={model_name}", file=sys.stderr)
-    except RuntimeError as e:
-        print(f"[Error] {e}", file=sys.stderr)
-        sys.exit(1)
-
     # 抓取推文
     print(f"📊 正在抓取 @{username} 的推文...", file=sys.stderr)
     try:
@@ -561,9 +566,39 @@ def main():
     elif len(tweets) < 100:
         print(f"⚠️  数据偏少（{len(tweets)} 条）：建议 100 条以上以获得更准确的分析", file=sys.stderr)
 
+    # 保存原始 JSON（可选）
+    if args.output_json:
+        json_path = Path(args.output_json)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps({
+            "user_info": user_info,
+            "tweets": tweets,
+            "fetched_at": time.strftime("%Y-%m-%d %H:%M"),
+            "tweet_count": len(tweets),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"✅ 原始数据已保存到: {json_path}", file=sys.stderr)
 
-    # AI 分析
-    print(f"🤖 正在用 MiniMax M2.5 分析用户画像...", file=sys.stderr)
+    # --no-analyze：只输出结构化数据，让调用方自己分析
+    if args.no_analyze:
+        output = _build_data_summary(user_info, tweets)
+        if args.output:
+            Path(args.output).write_text(output, encoding="utf-8")
+            print(f"✅ 数据已保存到: {args.output}", file=sys.stderr)
+        else:
+            print(output)
+        return
+
+    # AI 分析模式：加载 API Key
+    try:
+        api_key, api_url, model_name, backend = load_api_config()
+        if args.verbose:
+            print(f"[Auth] {backend} API loaded: {api_key[:15]}... model={model_name}", file=sys.stderr)
+    except RuntimeError as e:
+        print(f"[Error] {e}", file=sys.stderr)
+        print("提示：使用 --no-analyze 可跳过 AI 分析，直接输出推文数据", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"🤖 正在分析用户画像...", file=sys.stderr)
     try:
         analysis = analyze_profile_with_minimax(user_info, tweets, api_key, verbose=args.verbose,
                                                  api_url=api_url, model_name=model_name, backend=backend)
@@ -571,10 +606,8 @@ def main():
         print(f"[Error] Analysis failed: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 格式化报告
     report = format_report(user_info, tweets, analysis)
 
-    # 输出
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -582,6 +615,32 @@ def main():
         print(f"✅ 报告已保存到: {output_path}", file=sys.stderr)
     else:
         print(report)
+
+
+def _build_data_summary(user_info: Dict, tweets: List[Dict]) -> str:
+    """--no-analyze 模式：输出结构化推文数据，供调用方自行分析"""
+    lines = [
+        f"# @{user_info.get('username', 'unknown')} 推文数据",
+        f"",
+        f"## 基本信息",
+        f"- 用户名: @{user_info.get('username')}",
+        f"- 显示名称: {user_info.get('display_name', 'N/A')}",
+        f"- 简介: {user_info.get('bio', 'N/A')}",
+        f"- 加入时间: {user_info.get('joined', 'N/A')}",
+        f"- 推文数: {user_info.get('tweets_count', 'N/A')}",
+        f"- 粉丝数: {user_info.get('followers', 'N/A')}",
+        f"- 关注数: {user_info.get('following', 'N/A')}",
+        f"",
+        f"## 推文列表（共 {len(tweets)} 条）",
+        f"",
+    ]
+    for i, t in enumerate(tweets, 1):
+        lines.append(f"### [{i}] {t.get('date', '')} | 💬{t.get('replies',0)} 🔁{t.get('retweets',0)} ❤️{t.get('likes',0)}")
+        lines.append(t.get('text', '').strip())
+        lines.append("")
+    lines.append("---")
+    lines.append(f"*x-profile-analyzer v1.5 | 数据抓取时间: {time.strftime('%Y-%m-%d %H:%M')}*")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
