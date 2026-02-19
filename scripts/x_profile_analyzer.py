@@ -457,6 +457,83 @@ def _build_user_summary(user_info: Dict) -> str:
     return "\n".join(lines)
 
 
+def _parse_tweet_date(time_str: str) -> Optional[datetime]:
+    """把 Nitter 时间字符串解析成 datetime（尽力而为）"""
+    from datetime import timedelta
+    now = datetime.now()
+    if not time_str:
+        return None
+    # 相对时间：2h / 15m / 3d / 5s
+    m = re.match(r'^(\d+)([smhd])$', time_str.strip())
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        delta = {'s': timedelta(seconds=n), 'm': timedelta(minutes=n),
+                 'h': timedelta(hours=n), 'd': timedelta(days=n)}[unit]
+        return now - delta
+    # 绝对时间：Jan 19 或 Jan 19, 2026
+    for fmt in ("%b %d, %Y", "%b %d"):
+        try:
+            dt = datetime.strptime(time_str.strip(), fmt)
+            if fmt == "%b %d":
+                dt = dt.replace(year=now.year)
+                # 如果解析出来是未来日期，说明是去年
+                if dt > now:
+                    dt = dt.replace(year=now.year - 1)
+            return dt
+        except ValueError:
+            continue
+    return None
+
+
+def _build_activity_heatmap(tweets: List[Dict]) -> str:
+    """生成推文星期分布 ASCII 热力图"""
+    from collections import Counter
+    weekday_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    weekday_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+    counts = Counter()
+    parsed = 0
+    for t in tweets:
+        dt = _parse_tweet_date(t.get("time", ""))
+        if dt:
+            counts[dt.weekday()] += 1
+            parsed += 1
+
+    if parsed < 10:
+        return ""  # 数据太少，不生成
+
+    total = sum(counts.values())
+    max_count = max(counts.values()) if counts else 1
+    bar_width = 20
+
+    lines = [f"\n## 活跃时间分析\n", f"发推星期分布（共 {parsed} 条有效数据）：\n"]
+    for i, (name, cn) in enumerate(zip(weekday_names, weekday_cn)):
+        c = counts.get(i, 0)
+        pct = c / total * 100 if total else 0
+        filled = int(c / max_count * bar_width)
+        bar = "█" * filled + "░" * (bar_width - filled)
+        lines.append(f"{name} {bar} {c:3d} 条 ({pct:.0f}%)")
+
+    # 最活跃 / 最沉默
+    if counts:
+        peak_day = max(counts, key=counts.get)
+        quiet_day = min(counts, key=counts.get)
+        lines.append(f"\n🔥 最活跃：{weekday_cn[peak_day]}  📉 最沉默：{weekday_cn[quiet_day]}")
+
+        # 工作日 vs 周末
+        workday = sum(counts.get(i, 0) for i in range(5))
+        weekend = sum(counts.get(i, 0) for i in range(5, 7))
+        if total > 0:
+            if workday / total > 0.7:
+                lines.append("💡 工作日驱动型，周末明显减少")
+            elif weekend / total > 0.4:
+                lines.append("💡 周末活跃型，工作日输出少")
+            else:
+                lines.append("💡 全周均衡输出，无明显规律")
+
+    return "\n".join(lines)
+
+
 def _build_tweets_summary(tweets: List[Dict]) -> str:
     parts = []
     for i, t in enumerate(tweets, 1):
@@ -510,7 +587,8 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
 
 """
 
-    return header + analysis + f"\n\n---\n*分析由 AI 生成 | x-profile-analyzer v1.4*\n"
+    heatmap = _build_activity_heatmap(tweets)
+    return header + analysis + heatmap + f"\n\n---\n*分析由 AI 生成 | x-profile-analyzer v1.5*\n"
 
 
 # ── 主程序 ──────────────────────────────────────────────────────────────────────
@@ -635,10 +713,14 @@ def _build_data_summary(user_info: Dict, tweets: List[Dict]) -> str:
         f"",
     ]
     for i, t in enumerate(tweets, 1):
-        lines.append(f"### [{i}] {t.get('date', '')} | 💬{t.get('replies',0)} 🔁{t.get('retweets',0)} ❤️{t.get('likes',0)}")
+        lines.append(f"### [{i}] {t.get('time', '')} | 💬{t.get('replies',0)} 🔁{t.get('retweets',0)} ❤️{t.get('views',0)}")
         lines.append(t.get('text', '').strip())
         lines.append("")
-    lines.append("---")
+    # 加热力图
+    heatmap = _build_activity_heatmap(tweets)
+    if heatmap:
+        lines.append(heatmap)
+    lines.append("\n---")
     lines.append(f"*x-profile-analyzer v1.5 | 数据抓取时间: {time.strftime('%Y-%m-%d %H:%M')}*")
     return "\n".join(lines)
 
