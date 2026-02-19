@@ -26,27 +26,60 @@ from pathlib import Path
 CAMOFOX_PORT = 9377
 NITTER_INSTANCE = "nitter.net"
 MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages"
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 AUTH_PROFILES_PATH = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "auth-profiles.json"
 # REFERENCE_USER 已移除（v1.1）
 
 
 # ── 认证 ──────────────────────────────────────────────────────────────────────
 
-def load_minimax_key() -> str:
-    """从 auth-profiles.json 读取 MiniMax API key"""
+def load_api_config() -> tuple:
+    """
+    加载 AI API 配置，返回 (api_key, api_url, model_name, backend)
+    优先级：
+      1. MINIMAX_API_KEY 环境变量
+      2. OpenClaw auth-profiles.json（OpenClaw 用户自动读取）
+      3. OPENAI_API_KEY 环境变量（兼容任何 OpenAI 格式接口）
+    """
+    import os
+
+    # 1. 环境变量 MINIMAX_API_KEY
+    mm_key = os.environ.get("MINIMAX_API_KEY")
+    if mm_key:
+        return mm_key, MINIMAX_API_URL, "MiniMax-M2.5", "minimax"
+
+    # 2. OpenClaw auth-profiles.json
     try:
         with open(AUTH_PROFILES_PATH) as f:
             data = json.load(f)
         profiles = data.get("profiles", {})
         mm = profiles.get("minimax:default", {})
         key = mm.get("key", "")
-        if not key:
-            raise ValueError("minimax:default key not found")
-        return key
-    except FileNotFoundError:
-        raise RuntimeError(f"Auth profiles not found: {AUTH_PROFILES_PATH}")
-    except (KeyError, ValueError) as e:
-        raise RuntimeError(f"Cannot read MiniMax key: {e}")
+        if key:
+            return key, MINIMAX_API_URL, "MiniMax-M2.5", "minimax"
+    except Exception:
+        pass
+
+    # 3. OPENAI_API_KEY（兼容 OpenAI / DeepSeek / 任何兼容接口）
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    openai_url = os.environ.get("OPENAI_BASE_URL", OPENAI_API_URL)
+    openai_model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    if openai_key:
+        return openai_key, openai_url, openai_model, "openai"
+
+    raise RuntimeError(
+        "未找到 AI API Key。请设置以下任一环境变量：\n"
+        "  export MINIMAX_API_KEY=your_key   # MiniMax（推荐，免费额度多）\n"
+        "  export OPENAI_API_KEY=your_key    # OpenAI / DeepSeek / 兼容接口\n"
+        "  export OPENAI_BASE_URL=...        # 自定义接口地址（可选）\n"
+        "  export OPENAI_MODEL=gpt-4o-mini   # 模型名称（可选）\n"
+        "MiniMax 免费注册：https://www.minimaxi.com"
+    )
+
+def load_minimax_key() -> str:
+    """兼容旧版调用"""
+    key, _, _, _ = load_api_config()
+    return key
 
 
 # ── 推文抓取 (Camofox + Nitter) ────────────────────────────────────────────────
@@ -319,8 +352,13 @@ def analyze_profile_with_minimax(
     tweets: List[Dict],
     api_key: str,
     verbose: bool = False,
+    api_url: str = None,
+    model_name: str = "MiniMax-M2.5",
+    backend: str = "minimax",
 ) -> str:
-    """调用 MiniMax M2.5 API 生成用户画像分析"""
+    """调用 AI API 生成用户画像分析（支持 MiniMax / OpenAI 兼容接口）"""
+    if api_url is None:
+        api_url = MINIMAX_API_URL
 
     # 构建推文摘要
     tweets_summary = _build_tweets_summary(tweets)
@@ -460,7 +498,7 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
 
 """
 
-    return header + analysis + f"\n\n---\n*分析由 MiniMax M2.5 生成 | x-profile-analyzer v1.1*\n"
+    return header + analysis + f"\n\n---\n*分析由 AI 生成 | x-profile-analyzer v1.4*\n"
 
 
 # ── 主程序 ──────────────────────────────────────────────────────────────────────
@@ -496,9 +534,9 @@ def main():
 
     # 加载 API Key
     try:
-        api_key = load_minimax_key()
+        api_key, api_url, model_name, backend = load_api_config()
         if args.verbose:
-            print(f"[Auth] MiniMax API key loaded: {api_key[:15]}...", file=sys.stderr)
+            print(f"[Auth] {backend} API loaded: {api_key[:15]}... model={model_name}", file=sys.stderr)
     except RuntimeError as e:
         print(f"[Error] {e}", file=sys.stderr)
         sys.exit(1)
@@ -527,7 +565,8 @@ def main():
     # AI 分析
     print(f"🤖 正在用 MiniMax M2.5 分析用户画像...", file=sys.stderr)
     try:
-        analysis = analyze_profile_with_minimax(user_info, tweets, api_key, verbose=args.verbose)
+        analysis = analyze_profile_with_minimax(user_info, tweets, api_key, verbose=args.verbose,
+                                                 api_url=api_url, model_name=model_name, backend=backend)
     except RuntimeError as e:
         print(f"[Error] Analysis failed: {e}", file=sys.stderr)
         sys.exit(1)

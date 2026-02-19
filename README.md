@@ -34,7 +34,23 @@ python3 scripts/x_profile_analyzer.py --user YuLin807 --count 100 --verbose
 
 - Python 3.7+
 - [Camofox](https://github.com/openclaw/camofox) 运行在 `localhost:9377`（用于翻页抓推文）
-- MiniMax API Key（用于 AI 分析）
+- AI API Key（三选一）：
+
+```bash
+# 方案1：MiniMax（推荐，免费额度多）
+export MINIMAX_API_KEY=your_key
+# 注册：https://www.minimaxi.com
+
+# 方案2：OpenAI
+export OPENAI_API_KEY=your_key
+
+# 方案3：任何 OpenAI 兼容接口（DeepSeek / 本地 Ollama 等）
+export OPENAI_API_KEY=your_key
+export OPENAI_BASE_URL=https://api.deepseek.com/v1
+export OPENAI_MODEL=deepseek-chat
+```
+
+> OpenClaw 用户无需配置，自动读取内置 MiniMax 凭证。
 
 ## 工作原理
 
