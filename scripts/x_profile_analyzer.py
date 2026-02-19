@@ -62,7 +62,7 @@ def fetch_user_timeline(username: str, count: int = 20, verbose: bool = False) -
     通过 Camofox + Nitter 抓取用户时间线推文（支持翻页）
     返回 (tweets_list, user_info)
     """
-    MAX_PAGES = 10
+    MAX_PAGES = 30
     all_tweets: List[Dict] = []
     user_info: Dict = {}
     cursor: Optional[str] = None
@@ -458,7 +458,7 @@ def main():
         description="X 用户画像分析工具 - 抓取推文并生成结构化分析报告"
     )
     parser.add_argument("--user", "-u", required=True, help="X/Twitter 用户名（不含 @）")
-    parser.add_argument("--count", "-c", type=int, default=20, help="分析推文数量（默认 20）")
+    parser.add_argument("--count", "-c", type=int, default=100, help="分析推文数量（默认 100，Nitter 实际上限约 300）")
     parser.add_argument("--output", "-o", help="输出文件路径（默认输出到 stdout）")
     parser.add_argument("--verbose", "-v", action="store_true", help="显示详细进度信息")
     parser.add_argument("--no-camofox", action="store_true", help="跳过 Camofox 检查（调试用）")
