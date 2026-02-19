@@ -8,7 +8,7 @@ An [OpenClaw](https://github.com/openclaw/openclaw) skill. Sister tool of [X-Twe
 
 ## 能做什么
 
-- 抓取用户最近 **100 条推文**（自动翻页）
+- 抓取用户最近 **最多 300 条推文**（自动翻页，Nitter 硬上限）
 - AI 分析用户画像：话题偏好、发推风格、互动模式
 - 零依赖抓取，无需 X API、无需登录
 
@@ -47,7 +47,7 @@ python3 scripts/x_profile_analyzer.py --user YuLin807 --json
 
 ```
 --user USERNAME    分析的用户名（不带 @）
---count N          抓取推文数量（默认 100）
+--count N          抓取推文数量（默认 100，最多约 300）
 --json             JSON 格式输出
 --verbose          显示抓取进度
 --port N           Camofox 端口（默认 9377）
@@ -70,7 +70,8 @@ python3 scripts/x_profile_analyzer.py --user YuLin807 --json
 
 - 依赖 Nitter 可用性
 - 无法抓私密账号
-- 分析质量取决于推文数量（建议 50 条以上）
+- Nitter 单账号历史上限约 300 条（与账号大小无关）
+- 分析质量取决于推文数量（建议 100 条以上）
 
 ## License
 
