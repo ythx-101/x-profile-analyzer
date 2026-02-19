@@ -27,7 +27,7 @@ CAMOFOX_PORT = 9377
 NITTER_INSTANCE = "nitter.net"
 MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages"
 AUTH_PROFILES_PATH = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "auth-profiles.json"
-REFERENCE_USER = "YuLin807"  # 用于对比的参考用户
+# REFERENCE_USER 已移除（v1.1）
 
 
 # ── 认证 ──────────────────────────────────────────────────────────────────────
@@ -341,10 +341,10 @@ def analyze_profile_with_minimax(
 2. **写作风格** - 表达方式、语言习惯、句式特点、表情符号使用
 3. **互动习惯** - 发推频率、回复习惯、转发行为、引用评论风格
 4. **技术方向** - 涉及的技术栈、工具、项目、技术观点（如无明显技术内容则标注）
-5. **与 @{REFERENCE_USER} 的共同点** - 从话题、风格、兴趣等维度分析两者的潜在共鸣点（基于推文内容推断 @{REFERENCE_USER} 可能的偏好）
-6. **总结标签** - 用 5-8 个关键词标签概括该用户画像
+5. **AI 测算星座** - 根据推文风格、表达习惯、关注话题，用占星学视角给出"最像哪个星座"的判断，附上 2-3 句有趣的理由（纯娱乐向，不是真实星座推断）
+6. **总结标签** - 用 5-8 个关键词标签概括该用户画像，带权重评分（★☆）
 
-请保持分析客观、具体，基于实际推文内容，避免过度推断。"""
+请保持分析有趣且具体，基于实际推文内容。"""
 
     if verbose:
         print(f"[MiniMax] Sending {len(tweets)} tweets for analysis...", file=sys.stderr)
@@ -448,7 +448,7 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
 
 """
 
-    return header + analysis + f"\n\n---\n*分析由 MiniMax M2.5 生成 | 参考对比用户：@{REFERENCE_USER}*\n"
+    return header + analysis + f"\n\n---\n*分析由 MiniMax M2.5 生成 | x-profile-analyzer v1.1*\n"
 
 
 # ── 主程序 ──────────────────────────────────────────────────────────────────────
