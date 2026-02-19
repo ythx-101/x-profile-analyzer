@@ -15,15 +15,20 @@ An [OpenClaw](https://github.com/openclaw/openclaw) skill. Sister tool of [X-Twe
 ## 快速开始
 
 ```bash
-# 分析用户
-python3 scripts/x_profile_analyzer.py --user elonmusk
+# 快速分析（50 条，约 1 分钟）
+python3 scripts/x_profile_analyzer.py --user elonmusk --count 50
 
-# 抓 100 条分析
+# 标准分析（100 条，约 2 分钟）⭐ 推荐
 python3 scripts/x_profile_analyzer.py --user YuLin807 --count 100
 
-# JSON 输出
-python3 scripts/x_profile_analyzer.py --user YuLin807 --json
+# 深度分析（300 条，约 5 分钟，Nitter 上限）
+python3 scripts/x_profile_analyzer.py --user YuLin807
+
+# 详细进度输出
+python3 scripts/x_profile_analyzer.py --user YuLin807 --count 100 --verbose
 ```
+
+> **时间参考**：每 100 条约需 2 分钟（受 Nitter 响应速度影响）。建议日常用 `--count 100`，深度研究再用默认的 300 条。
 
 ## 环境要求
 
@@ -47,7 +52,7 @@ python3 scripts/x_profile_analyzer.py --user YuLin807 --json
 
 ```
 --user USERNAME    分析的用户名（不带 @）
---count N          抓取推文数量（默认 100，最多约 300）
+--count N          抓取推文数量（默认 300；推荐 100 条约 2 分钟，300 条约 5 分钟）
 --json             JSON 格式输出
 --verbose          显示抓取进度
 --port N           Camofox 端口（默认 9377）
