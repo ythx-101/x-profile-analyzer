@@ -426,12 +426,22 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     username = user_info.get("username", "unknown")
     display_name = user_info.get("display_name", username)
+    tweet_count = len(tweets)
+
+    # 数据质量标注
+    if tweet_count < 50:
+        data_quality = f"⚠️ 低（仅 {tweet_count} 条，Nitter 对该账号收录不足，结果仅供参考）"
+    elif tweet_count < 100:
+        data_quality = f"⚡ 中（{tweet_count} 条，建议 100+ 条获得更准确分析）"
+    else:
+        data_quality = f"✅ 高（{tweet_count} 条）"
 
     header = f"""# 用户画像分析报告：@{username}
 
 > 生成时间：{now}
-> 分析工具：x-profile-analyzer v1.0
+> 分析工具：x-profile-analyzer v1.2
 > 数据来源：Nitter / X.com
+> 数据质量：{data_quality}
 
 ## 基本信息
 
@@ -507,6 +517,13 @@ def main():
         sys.exit(1)
 
     print(f"✅ 成功获取 {len(tweets)} 条推文", file=sys.stderr)
+
+    # 数据质量提示
+    if len(tweets) < 50:
+        print(f"⚠️  数据不足（仅 {len(tweets)} 条）：该账号在 Nitter 收录较少，可能是小账号或低活跃度账号，分析结果仅供参考", file=sys.stderr)
+    elif len(tweets) < 100:
+        print(f"⚠️  数据偏少（{len(tweets)} 条）：建议 100 条以上以获得更准确的分析", file=sys.stderr)
+
 
     # AI 分析
     print(f"🤖 正在用 MiniMax M2.5 分析用户画像...", file=sys.stderr)
