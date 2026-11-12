@@ -3,3 +3,7 @@ __pycache__/
 .env
 *.json.bak
 output/
+.venv/
+venv/
+.DS_Store
+.pytest_cache/

@@ -16,7 +16,8 @@ Usage:
 AI 配置（完整模式需要，三选一）：
     export MINIMAX_API_KEY=xxx     # MiniMax（OpenClaw 用户自动读取，无需配置）
     export OPENAI_API_KEY=xxx      # OpenAI / DeepSeek 等
-    export OPENAI_BASE_URL=xxx     # 自定义接口（可选）
+    export OPENAI_BASE_URL=xxx     # 自定义接口（可选，base 或完整端点均可）
+    export MINIMAX_MODEL=xxx       # MiniMax 模型名（可选，默认 MiniMax-M2.5）
     export OPENAI_MODEL=xxx        # 模型名（可选，默认 gpt-4o-mini）
 """
 
@@ -40,25 +41,41 @@ NITTER_INSTANCE = "nitter.net"
 MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages"
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 AUTH_PROFILES_PATH = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "auth-profiles.json"
+DEFAULT_MINIMAX_MODEL = "MiniMax-M2.5"
+__version__ = "1.7"
+
+# 推文时间链接（相对时间 3d / 绝对时间 Jan 19 或 Jan 19, 2025），开头与边界检测共用
+TIME_LINK_RE = re.compile(
+    r'link\s+"(\d+[smhd]|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+(?:,\s+\d{4})?)"\s+\[e\d+\]:'
+)
 # REFERENCE_USER 已移除（v1.1）
 
 
 # ── 认证 ──────────────────────────────────────────────────────────────────────
 
+def _normalize_openai_url(url: str) -> str:
+    """OPENAI_BASE_URL 既可填 base（.../v1），也可填完整端点（.../chat/completions）"""
+    url = url.strip()
+    if url.rstrip("/").endswith("/chat/completions"):
+        return url.rstrip("/")
+    return url.rstrip("/") + "/chat/completions"
+
+
 def load_api_config() -> tuple:
     """
     加载 AI API 配置，返回 (api_key, api_url, model_name, backend)
+    MiniMax 模型名可用 MINIMAX_MODEL 覆盖（默认 MiniMax-M2.5）。
     优先级：
       1. MINIMAX_API_KEY 环境变量
       2. OpenClaw auth-profiles.json（OpenClaw 用户自动读取）
       3. OPENAI_API_KEY 环境变量（兼容任何 OpenAI 格式接口）
     """
-    import os
+    minimax_model = os.environ.get("MINIMAX_MODEL") or DEFAULT_MINIMAX_MODEL
 
     # 1. 环境变量 MINIMAX_API_KEY
     mm_key = os.environ.get("MINIMAX_API_KEY")
     if mm_key:
-        return mm_key, MINIMAX_API_URL, "MiniMax-M2.5", "minimax"
+        return mm_key, MINIMAX_API_URL, minimax_model, "minimax"
 
     # 2. OpenClaw auth-profiles.json
     try:
@@ -68,13 +85,13 @@ def load_api_config() -> tuple:
         mm = profiles.get("minimax:default", {})
         key = mm.get("key", "")
         if key:
-            return key, MINIMAX_API_URL, "MiniMax-M2.5", "minimax"
+            return key, MINIMAX_API_URL, minimax_model, "minimax"
     except Exception:
         pass
 
     # 3. OPENAI_API_KEY（兼容 OpenAI / DeepSeek / 任何兼容接口）
     openai_key = os.environ.get("OPENAI_API_KEY")
-    openai_url = os.environ.get("OPENAI_BASE_URL", OPENAI_API_URL)
+    openai_url = _normalize_openai_url(os.environ.get("OPENAI_BASE_URL") or OPENAI_API_URL)
     openai_model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
     if openai_key:
         return openai_key, openai_url, openai_model, "openai"
@@ -98,7 +115,6 @@ def load_minimax_key() -> str:
 
 def _extract_cursor(snapshot: str, username: str) -> Optional[str]:
     """从快照中提取下一页 cursor"""
-    import re
     cursors = re.findall(r'cursor=([^\"&\s\)]+)', snapshot)
     return cursors[0] if cursors else None
 
@@ -278,7 +294,7 @@ def _parse_tweets(snapshot: str, username: str, max_count: int) -> List[Dict]:
         line = lines[i].strip()
 
         # 检测推文开头: 时间链接 (如 "27m", "9h", "3d")
-        time_m = re.search(r'link\s+"(\d+[smhd]|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+(?:,\s+\d{4})?)"\s+\[e\d+\]:', line)
+        time_m = TIME_LINK_RE.search(line)
         if not time_m:
             i += 1
             continue
@@ -309,7 +325,7 @@ def _parse_tweets(snapshot: str, username: str, max_count: int) -> List[Dict]:
             next_line = lines[j].strip()
 
             # 下一条推文开始（新的时间链接）
-            if re.search(r'link\s+"(\d+[smhd]|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+)"\s+\[e\d+\]:', next_line):
+            if TIME_LINK_RE.search(next_line):
                 break
 
             # 推文文本
@@ -357,7 +373,7 @@ def _parse_tweets(snapshot: str, username: str, max_count: int) -> List[Dict]:
     return tweets
 
 
-# ── MiniMax M2.5 分析 ──────────────────────────────────────────────────────────
+# ── AI 分析（MiniMax / OpenAI 兼容） ──────────────────────────────────────────────────────────
 
 def analyze_profile_with_minimax(
     user_info: Dict,
@@ -365,7 +381,7 @@ def analyze_profile_with_minimax(
     api_key: str,
     verbose: bool = False,
     api_url: str = None,
-    model_name: str = "MiniMax-M2.5",
+    model_name: str = DEFAULT_MINIMAX_MODEL,
     backend: str = "minimax",
 ) -> str:
     """调用 AI API 生成用户画像分析（支持 MiniMax / OpenAI 兼容接口）"""
@@ -399,50 +415,61 @@ def analyze_profile_with_minimax(
 
 请保持分析深刻、具体、有洞察力，基于实际推文内容，避免套话。"""
 
+    if not api_url:
+        api_url = OPENAI_API_URL if backend == "openai" else MINIMAX_API_URL
+
     if verbose:
-        print(f"[MiniMax] Sending {len(tweets)} tweets for analysis...", file=sys.stderr)
+        print(f"[{backend}] Sending {len(tweets)} tweets for analysis...", file=sys.stderr)
 
     try:
-        request_body = json.dumps({
-            "model": "MiniMax-M1",
-            "max_tokens": 4096,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            MINIMAX_API_URL,
-            data=request_body,
-            headers={
+        if backend == "openai":
+            request_body = json.dumps({
+                "model": model_name,
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}],
+            }).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            }
+        else:
+            request_body = json.dumps({
+                "model": model_name,
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}],
+            }).encode("utf-8")
+            headers = {
                 "Content-Type": "application/json",
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
-            },
-            method="POST",
-        )
+            }
+
+        req = urllib.request.Request(api_url, data=request_body, headers=headers, method="POST")
 
         with urllib.request.urlopen(req, timeout=120) as resp:
             result = json.loads(resp.read().decode("utf-8"))
 
         # 提取文本
-        content = result.get("content", [])
-        for block in content:
-            if block.get("type") == "text":
-                return block["text"]
+        if backend == "openai":
+            choices = result.get("choices") or []
+            if choices:
+                text = (choices[0].get("message") or {}).get("content")
+                if text:
+                    return text
+        else:
+            for block in result.get("content", []):
+                if block.get("type") == "text":
+                    return block["text"]
 
         return f"[Error] Unexpected API response format: {json.dumps(result)[:500]}"
 
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"MiniMax API HTTP {e.code}: {body}")
+        raise RuntimeError(f"{backend} API HTTP {e.code}: {body}")
     except urllib.error.URLError as e:
-        raise RuntimeError(f"MiniMax API connection error: {e.reason}")
+        raise RuntimeError(f"{backend} API connection error: {e.reason}")
     except TimeoutError:
-        raise RuntimeError("MiniMax API request timed out (>120s). Try reducing --count.")
+        raise RuntimeError(f"{backend} API request timed out (>120s). Try reducing --count.")
 
 
 def _build_user_summary(user_info: Dict) -> str:
@@ -566,7 +593,7 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
     header = f"""# 用户画像分析报告：@{username}
 
 > 生成时间：{now}
-> 分析工具：x-profile-analyzer v1.2
+> 分析工具：x-profile-analyzer v{__version__}
 > 数据来源：Nitter / X.com
 > 数据质量：{data_quality}
 
@@ -589,7 +616,7 @@ def format_report(user_info: Dict, tweets: List[Dict], analysis: str) -> str:
 """
 
     heatmap = _build_activity_heatmap(tweets)
-    return header + analysis + heatmap + f"\n\n---\n*分析由 AI 生成 | x-profile-analyzer v1.5*\n"
+    return header + analysis + heatmap + f"\n\n---\n*分析由 AI 生成 | x-profile-analyzer v{__version__}*\n"
 
 
 # ── 主程序 ──────────────────────────────────────────────────────────────────────
@@ -605,6 +632,7 @@ def main():
     parser.add_argument("--no-analyze", action="store_true", help="只抓推文数据，不调 AI 分析（让调用方自己分析）")
     parser.add_argument("--verbose", "-v", action="store_true", help="显示详细进度信息")
     parser.add_argument("--no-camofox", action="store_true", help="跳过 Camofox 检查（调试用）")
+    parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args()
 
     username = args.user.lstrip("@")
@@ -671,7 +699,7 @@ def main():
     try:
         api_key, api_url, model_name, backend = load_api_config()
         if args.verbose:
-            print(f"[Auth] {backend} API loaded: {api_key[:15]}... model={model_name}", file=sys.stderr)
+            print(f"[Auth] {backend} API loaded (key ****{api_key[-4:]}) model={model_name}", file=sys.stderr)
     except RuntimeError as e:
         print(f"[Error] {e}", file=sys.stderr)
         print("提示：使用 --no-analyze 可跳过 AI 分析，直接输出推文数据", file=sys.stderr)
@@ -722,7 +750,7 @@ def _build_data_summary(user_info: Dict, tweets: List[Dict]) -> str:
     if heatmap:
         lines.append(heatmap)
     lines.append("\n---")
-    lines.append(f"*x-profile-analyzer v1.5 | 数据抓取时间: {time.strftime('%Y-%m-%d %H:%M')}*")
+    lines.append(f"*x-profile-analyzer v{__version__} | 数据抓取时间: {time.strftime('%Y-%m-%d %H:%M')}*")
     return "\n".join(lines)
 
 

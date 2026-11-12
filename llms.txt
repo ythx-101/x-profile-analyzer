@@ -1,0 +1,26 @@
+# x-profile-analyzer
+
+> AI-powered X/Twitter user profile analyzer. Give a username; no X API key and no login needed. Fetches up to ~300 public tweets via Nitter + Camofox and generates a 10-dimension persona report with MiniMax or any OpenAI-compatible LLM. (X/推特用户画像分析工具，无需 API Key。)
+
+Key points:
+- No X/Twitter API key or login required; public tweets only.
+- Scraping: Nitter pages opened through Camofox (localhost:9377), cursor pagination, up to ~300 tweets per account.
+- LLM backends: MiniMax, or any OpenAI-compatible endpoint (OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL).
+- `--no-analyze` data mode: export structured tweets for your own AI agent.
+- 10 report dimensions: topics, writing style, engagement habits, tech focus, deep motivation, behavior prediction, zodiac guess (for fun), how to approach them, one-line sketch (all LLM), plus a weekday activity heatmap (computed locally).
+- Python 3.7+, no third-party dependencies, MIT license.
+
+## Docs
+
+- [README](https://github.com/ythx-101/x-profile-analyzer/blob/main/README.md): install, options, FAQ, example output
+- [scripts/x_profile_analyzer.py](https://github.com/ythx-101/x-profile-analyzer/blob/main/scripts/x_profile_analyzer.py): the whole tool (CLI entry point)
+
+## Related
+
+- [X-Tweet-Fetcher](https://github.com/ythx-101/x-tweet-fetcher): sister project for fetching tweets/timelines
+- [OpenClaw](https://github.com/openclaw/openclaw): the agent platform this skill targets
+- [camofox-browser](https://github.com/jo-inc/camofox-browser): browser service used for scraping
+
+## Responsible use
+
+Reports are AI inferences from public tweets. Do not use for harassment, stalking, doxxing or discrimination.
